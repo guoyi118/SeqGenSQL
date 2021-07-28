@@ -93,7 +93,7 @@ class SeqGenSQL(pl.LightningModule):
         attention_mask=attention_mask,
         decoder_input_ids=decoder_input_ids,
         decoder_attention_mask=decoder_attention_mask,
-        lm_labels=lm_labels,
+        labels=lm_labels,
         output_hidden_states=True, # to output all hidden states from T5Stack
     )
     
