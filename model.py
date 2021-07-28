@@ -6,7 +6,7 @@ import random
 import re
 import copy
 from itertools import chain
-
+from datamodule import PyTorchDataModule 
 import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -16,6 +16,7 @@ from torch import nn
 from torch.nn import CrossEntropyLoss
 import multiprocessing
 from dataset import WikiSqlDataset
+import pandas as pd
 
 from transformers import (
     AdamW,
@@ -99,14 +100,14 @@ class SeqGenSQL(pl.LightningModule):
     
 
   def _step(self, batch, debug=False):
-    lm_labels = batch["target_ids"]
+    lm_labels = batch["labels"]
     lm_labels[lm_labels[:, :] == self.tokenizer.pad_token_id] = -100
 
     outputs = self(
-        input_ids=batch["source_ids"],
-        attention_mask=batch["source_mask"],
+        input_ids=batch["source_text_input_ids"],
+        attention_mask=batch["source_text_attention_mask"],
         lm_labels=lm_labels,
-        decoder_attention_mask=batch['target_mask']
+        decoder_attention_mask=batch['labels_attention_mask']
     )
     if (self.hparams.use_modified_network):
       # This is implementation for gated generation/extraction
@@ -128,7 +129,7 @@ class SeqGenSQL(pl.LightningModule):
       # Extractive Branch is a cross attention between input questions/column headers and generate sql sequence
       ######################################################    
       # Get hidden state for input
-      # To get the output of encoder, use model.get_encoder()(batch["source_ids"])
+      # To get the output of encoder, use model.get_encoder()(batch["source_text_input_ids"])
       bs, qlen, dim = output_hidden_state.size()
       def shape(x):
         """  projection """
@@ -137,7 +138,7 @@ class SeqGenSQL(pl.LightningModule):
         """  compute context """
         return x.transpose(1, 2).contiguous().view(bs, -1, self.inner_dim)
         
-      input_hidden_state = self.model.get_encoder()(batch["source_ids"])[0] #[batch_size, input_len, d_model]
+      input_hidden_state = self.model.get_encoder()(batch["source_text_input_ids"])[0] #[batch_size, input_len, d_model]
       q = shape(self.q (output_hidden_state)) #[batch_size, n_heads,  input_len, dim_per_head]
       #print("q shape:", q.shape)
       v = shape(self.v(input_hidden_state))  #[batch_size, n_heads, output_len, dim_per_head]
@@ -196,7 +197,7 @@ class SeqGenSQL(pl.LightningModule):
       #print(lm_logits.size(-1))
       #print(lm_logits.view(-1, lm_logits.size(-1)))
       loss = loss_fct(lm_logits.view(-1, lm_logits.size(-1)), lm_labels.view(-1))
-      return (loss,lm_logits,context,output_hidden_state, input_hidden_state,self.model.get_encoder()(batch["source_ids"]), lm_labels.view(-1)) 
+      return (loss,lm_logits,context,output_hidden_state, input_hidden_state,self.model.get_encoder()(batch["source_text_input_ids"]), lm_labels.view(-1)) 
     else:
       #loss = outputs[0]
       return outputs
@@ -243,19 +244,27 @@ class SeqGenSQL(pl.LightningModule):
 
     return tqdm_dict
 
-  def get_dataset(self, data_type):
-    return WikiSqlDataset(tokenizer=self.tokenizer, 
-                            data_dir=self.hparams.data_dir, 
-                            dataset_type=data_type, 
-                            include_data_type = self.hparams.include_data_type, 
-                            include_sample_data = self.hparams.num_sample_rows, 
-                            data_augmentation = self.hparams.data_aug,
-                            generated_data = self.hparams.generated_data_files,
-                            max_input_len=self.hparams.max_seq_length,  
-                            max_output_len=self.hparams.max_output_length)
+  # def get_dataset(self, data_type):
+  #   return WikiSqlDataset(tokenizer=self.tokenizer, 
+  #                           data_dir=self.hparams.data_dir, 
+  #                           dataset_type=data_type, 
+  #                           include_data_type = self.hparams.include_data_type, 
+  #                           include_sample_data = self.hparams.num_sample_rows, 
+  #                           data_augmentation = self.hparams.data_aug,
+  #                           generated_data = self.hparams.generated_data_files,
+  #                           max_input_len=self.hparams.max_seq_length,  
+  #                           max_output_len=self.hparams.max_output_length)
 
   def train_dataloader(self):
-    train_dataset = self.get_dataset(data_type="train")
+    self.train_df = pd.read_csv(self.hparams.training_data_dir)
+    train_dataset = PyTorchDataModule(
+        self.train_df,
+        self.tokenizer,
+        self.hparams.max_seq_length,
+        self.hparams.max_output_length,
+    )
+
+    # train_dataset = self.get_dataset(data_type="train")
     dataloader = DataLoader(train_dataset, batch_size=self.hparams.train_batch_size, 
                             drop_last=True, shuffle=True, num_workers=self.hparams.num_of_workers)
     t_total = (
@@ -270,7 +279,14 @@ class SeqGenSQL(pl.LightningModule):
     return dataloader
 
   def val_dataloader(self):
-    val_dataset = self.get_dataset(data_type="dev")
+    self.test_df = pd.read_csv(self.hparams.evaluation_data_dir)
+    val_dataset = PyTorchDataModule(
+        self.test_df,
+        self.tokenizer,
+        self.hparams.max_seq_length,
+        self.hparams.max_output_length,
+    )
+    # val_dataset = self.get_dataset(data_type="dev")
     return DataLoader(val_dataset, batch_size=self.hparams.eval_batch_size, drop_last=True, num_workers=self.hparams.num_of_workers)
 
 

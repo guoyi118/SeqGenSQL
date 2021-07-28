@@ -28,6 +28,8 @@ def seed_everything(seed):
         torch.cuda.manual_seed_all(seed)
 
 def contruct_params(parser):
+  parser.add_argument('--training_data_dir', default="training_sample.csv")
+  parser.add_argument('--evaluation_data_dir', default="evaluation_sample.csv")
   parser.add_argument('--data_dir', default="data")
   parser.add_argument("--output_dir", default=".")
   parser.add_argument("--default_root_dir", default=".", help="checkpoint folder") 
@@ -65,6 +67,8 @@ def contruct_params(parser):
     args.n_gpu= len(args.gpus)
   elif args.gpus == -1:
     args.n_gpu = torch.cuda.device_count()
+  else:
+      args.n_gpu = 1
 
   return args
 
@@ -81,10 +85,10 @@ if __name__ == '__main__':
     if args.generated_data_files != []:
         args.data_aug = []
 
-    if isinstance(args.gpus, list):
-        args.n_gpu= len(args.gpus)
-    elif args.gpus == -1:
-        args.n_gpu = torch.cuda.device_count()
+    # if isinstance(args.gpus, list):
+    #     args.n_gpu= len(args.gpus)
+    # elif args.gpus == -1:
+    #     args.n_gpu = torch.cuda.device_count()
 
     args.train_batch_size= 2 * args.n_gpu
     args.eval_batch_size = 2 * args.n_gpu

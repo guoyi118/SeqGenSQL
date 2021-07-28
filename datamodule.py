@@ -38,8 +38,7 @@ class PyTorchDataModule(Dataset):
         """ returns dictionary of input tensors to feed into T5/MT5 model"""
 
         data_row = self.data.iloc[index]
-        source_text = data_row["source_text"]
-
+        source_text = data_row["prefix"] + ":" +  data_row["source_text"]
         source_text_encoding = self.tokenizer(
             source_text,
             max_length=self.source_max_token_len,
@@ -49,7 +48,6 @@ class PyTorchDataModule(Dataset):
             add_special_tokens=True,
             return_tensors="pt",
         )
-
         target_text_encoding = self.tokenizer(
             data_row["target_text"],
             max_length=self.target_max_token_len,
