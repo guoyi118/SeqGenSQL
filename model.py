@@ -118,12 +118,13 @@ class SeqGenSQL(pl.LightningModule):
       ######################################################
       # Get generated branch - the original output hidden state
       # also scale like the original T5
-      output_hidden_state = outputs[3][-1] * (self.model.model_dim ** -0.5)    #[batch_size, output_len, d_model]
+      # outputs is Seq2SeqLMOutput ouotputs[3][-1] is last decoder_hidden_states 
+      output_hidden_state = outputs[3][-1] * (self.model.model_dim ** -0.5)    #[batch_size, output_len, d_model] #
       #decoder_state_norm = self.layer_norm(output_hidden_state)
       #print(decoder_state_norm.shape)
  
       # Pass final LM head
-      lm_logits_gen = self.model.lm_head(output_hidden_state)
+      lm_logits_gen = self.model.lm_head(output_hidden_state) # lm_head is the last layer of T5, lm_logits_gen is the results of decoder 
       ######################################################    
       # Extractive Branch
       # Extractive Branch is a cross attention between input questions/column headers and generate sql sequence
@@ -139,6 +140,8 @@ class SeqGenSQL(pl.LightningModule):
         return x.transpose(1, 2).contiguous().view(bs, -1, self.inner_dim)
         
       input_hidden_state = self.model.get_encoder()(batch["source_text_input_ids"])[0] #[batch_size, input_len, d_model]
+      # cross attention:  q is target sequence, v k is source sequence
+      #self attention : q, v, k is all the same.
       q = shape(self.q (output_hidden_state)) #[batch_size, n_heads,  input_len, dim_per_head]
       #print("q shape:", q.shape)
       v = shape(self.v(input_hidden_state))  #[batch_size, n_heads, output_len, dim_per_head]
@@ -173,6 +176,7 @@ class SeqGenSQL(pl.LightningModule):
       context =  context * (self.model.model_dim ** -0.5)
       #context_norm = self.layer_norm(context)
       lm_logits_ext = self.model.lm_head(context)
+      print("lm_logits_ext:", lm_logits_ext.shape)
       ######################################################    
       # Use probability to decide whether generate or extract
       ######################################################  
@@ -188,7 +192,13 @@ class SeqGenSQL(pl.LightningModule):
       ######################################################    
       # Use gated output to pass LM_Head layer
       ######################################################  
+      print('gate_layer_output:',gate_layer_output.shape)
+      print('lm_logits_gen:',lm_logits_gen.shape)
+      print('lm_logits_ext:',lm_logits_ext.shape)
       lm_logits = (1 - gate_layer_output) * lm_logits_gen + gate_layer_output * lm_logits_ext
+      
+      # lm_logits = lm_logits_ext if gate_layer_output > 0.5 else lm_logits_gen
+
       #merged_output_norm =  self.layer_norm(merged_output)
 
       

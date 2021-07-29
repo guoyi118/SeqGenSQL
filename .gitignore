@@ -2,3 +2,4 @@
 SeqGenSQL.ckpt base_epoch=12-val_loss=0.02616.ckpt
 __pycache__
 SeqGenSQL.ckpt base_epoch=12-val_loss=0.02616.ckpt base_epoch=12-val_loss=0.02616.ckpt.score.log
+/lightning_logs
