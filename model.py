@@ -75,7 +75,7 @@ class SeqGenSQL(pl.LightningModule):
         self.layer_norm_ext = LayerNorm(self.model.config.d_model, eps=self.model.config.layer_norm_epsilon)
      
         # Added gated layer with model.config.d_model
-        self.ff_gate = nn.Linear(self.model.config.d_model * 2,1, bias = False) 
+        self.switch = nn.Linear(self.model.config.d_model * 2,1, bias = False) 
         self.o = nn.Linear(self.inner_dim, self.model.config.d_model, bias = False) 
     
   
@@ -176,29 +176,30 @@ class SeqGenSQL(pl.LightningModule):
       context =  context * (self.model.model_dim ** -0.5)
       #context_norm = self.layer_norm(context)
       lm_logits_ext = self.model.lm_head(context)
-      print("lm_logits_ext:", lm_logits_ext.shape)
       ######################################################    
       # Use probability to decide whether generate or extract
       ######################################################  
       # Pass gate layer - Probablities of generation or extration
-      #gate_layer = self.ff_gate(self.layer_norm_gen(output_hidden_state)+self.layer_norm_ext(context))  # [batch_size, output_len, input_len+d_model]
-      gate_layer = self.ff_gate(torch.cat((self.layer_norm_gen(output_hidden_state), self.layer_norm_ext(context)), dim=2))  # [batch_size, output_len, input_len+d_model]
-      gate_layer_output = torch.nn.Sigmoid()(gate_layer)    # [batch_size, output_len, 1]
+      #switch_layer = self.switch(self.layer_norm_gen(output_hidden_state)+self.layer_norm_ext(context))  # [batch_size, output_len, input_len+d_model]
+      switch_layer = self.switch(torch.cat((self.layer_norm_gen(output_hidden_state), self.layer_norm_ext(context)), dim=2))  # [batch_size, output_len, input_len+d_model]
+      switch_layer_output = torch.nn.Sigmoid()(switch_layer)    # [batch_size, output_len, 1]
       
       # Put everything together:
       # merge output_hidden_state (generative) and input position index (extractive)
-      #print(gate_layer_output.shape, decoder_state_norm.shape, context_norm.shape)
+      #print(switch_layer_output.shape, decoder_state_norm.shape, context_norm.shape)
       
       ######################################################    
       # Use gated output to pass LM_Head layer
       ######################################################  
-      print('gate_layer_output:',gate_layer_output.shape)
-      print('lm_logits_gen:',lm_logits_gen.shape)
-      print('lm_logits_ext:',lm_logits_ext.shape)
-      lm_logits = (1 - gate_layer_output) * lm_logits_gen + gate_layer_output * lm_logits_ext
-      
-      # lm_logits = lm_logits_ext if gate_layer_output > 0.5 else lm_logits_gen
+      # print('switch_layer_output:',switch_layer_output)
+      # print('lm_logits_gen:',lm_logits_gen.shape)
+      # print('lm_logits_ext:',lm_logits_ext.shape)
 
+      lm_logits = (1 - switch_layer_output) * lm_logits_gen + switch_layer_output * lm_logits_ext
+      # guoyi
+      # lm_decision = torch.where(switch_layer_output>0.5,1,0)
+      # lm_logits = (1 - lm_decision) * lm_logits_gen + lm_decision * lm_logits_ext
+      
       #merged_output_norm =  self.layer_norm(merged_output)
 
       
@@ -219,7 +220,12 @@ class SeqGenSQL(pl.LightningModule):
     loss = outputs[0]
 
     tensorboard_logs = {"train_loss": loss}
-
+    print("global_step:",self.trainer.global_step)
+    if self.trainer.global_step % 200 == 0:
+      path = f"{self.hparams.output_dir}/T5_gate-epoch-{self.current_epoch}-{self.trainer.global_step}-train-loss-{str(loss)}"
+      self.tokenizer.save_pretrained(path)
+      self.model.save_pretrained(path)
+    
     if debug:
       return outputs
     else:
@@ -228,11 +234,7 @@ class SeqGenSQL(pl.LightningModule):
   def training_epoch_end(self, outputs):
     avg_train_loss = torch.stack([x["loss"] for x in outputs]).mean()
     tensorboard_logs = {"avg_train_loss": avg_train_loss, 
-                        "avg_gate_value":torch.mean(torch.nn.Sigmoid()(self.ff_gate.weight))}
-    
-    path = f"{self.hparams.output_dir}/T5_gate-epoch-{self.current_epoch}-train-loss-{str(avg_train_loss)}"
-    self.tokenizer.save_pretrained(path)
-    self.model.save_pretrained(path)
+                        "avg_gate_value":torch.mean(torch.nn.Sigmoid()(self.switch.weight))}
     
     return {"avg_train_loss": avg_train_loss, "log": tensorboard_logs, 'progress_bar': tensorboard_logs}
 
