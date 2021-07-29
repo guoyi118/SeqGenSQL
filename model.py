@@ -230,7 +230,7 @@ class SeqGenSQL(pl.LightningModule):
     tensorboard_logs = {"avg_train_loss": avg_train_loss, 
                         "avg_gate_value":torch.mean(torch.nn.Sigmoid()(self.ff_gate.weight))}
     
-    path = f"{self.output_dir}/T5_gate-epoch-{self.current_epoch}-train-loss-{str(avg_train_loss)}"
+    path = f"{self.hparams.output_dir}/T5_gate-epoch-{self.current_epoch}-train-loss-{str(avg_train_loss)}"
     self.tokenizer.save_pretrained(path)
     self.model.save_pretrained(path)
     
