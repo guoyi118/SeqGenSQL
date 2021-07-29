@@ -229,8 +229,15 @@ class SeqGenSQL(pl.LightningModule):
     avg_train_loss = torch.stack([x["loss"] for x in outputs]).mean()
     tensorboard_logs = {"avg_train_loss": avg_train_loss, 
                         "avg_gate_value":torch.mean(torch.nn.Sigmoid()(self.ff_gate.weight))}
+    
+    path = f"{self.output_dir}/T5_gate-epoch-{self.current_epoch}-train-loss-{str(avg_train_loss)}"
+    self.tokenizer.save_pretrained(path)
+    self.model.save_pretrained(path)
+    
     return {"avg_train_loss": avg_train_loss, "log": tensorboard_logs, 'progress_bar': tensorboard_logs}
 
+  
+  
   def validation_step(self, batch, batch_idx):
     outputs = self._step(batch)
     loss = outputs[0]
