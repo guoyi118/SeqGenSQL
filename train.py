@@ -44,7 +44,7 @@ def contruct_params(parser):
   parser.add_argument("--eval_batch_size", default=32)
   parser.add_argument("--num_train_epochs", default=1)
   parser.add_argument("--gradient_accumulation_steps", default=16)
-  parser.add_argument("--gpus", default=None)
+  parser.add_argument("--gpus", default=-1)
   parser.add_argument("--max_grad_norm", default=1.0, help="if you enable 16-bit training then set this to a sensible value, 0.5 is a good default")
   parser.add_argument("--seed", default=42)
   parser.add_argument("--early_stop_callback", default=False)
